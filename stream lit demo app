@@ -1,0 +1,78 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import joblib
+from sklearn.ensemble import RandomForestRegressor
+
+st.set_page_config(page_title="Nigeria Crop Yield Predictor", layout="centered")
+
+st.title("🌾 Nigeria Crop Yield Predictor")
+st.write("Predict maize yield using Weather, Soil, and Pesticide data. Built with synthetic data.")
+
+# 1. LOAD TRAINED MODEL - we'll train it on the fly from synthetic data
+@st.cache_data
+def load_data_and_train():
+    # This is the same synthetic data logic we used
+    df = pd.read_csv("final_synthetic_crop_dataset.csv")
+    X = df.drop(['yield_tons_per_ha'], axis=1)
+    X = X.select_dtypes(include=[np.number])
+    y = df['yield_tons_per_ha']
+    model = RandomForestRegressor(n_estimators=200, random_state=42)
+    model.fit(X, y)
+    return model, X.columns
+
+model, features = load_data_and_train()
+
+# 2. USER INPUT FORM
+st.sidebar.header("Enter Farm Details")
+
+LGA = st.sidebar.selectbox("LGA", ["Surulere", "Ikeja", "Zaria", "Kaduna North", "Bwari"])
+crop = st.sidebar.selectbox("Crop", ["Maize", "Rice", "Sorghum"])
+
+rainfall = st.sidebar.slider("Rainfall in July-Aug mm", 50, 200, 110)
+temp = st.sidebar.slider("Avg Temp C", 24, 34, 29)
+humidity = st.sidebar.slider("Humidity %", 50, 90, 75)
+solar = st.sidebar.slider("Solar Radiation MJ/m2", 15, 25, 19)
+
+soil_ph = st.sidebar.slider("Soil pH", 5.0, 7.5, 6.3)
+soil_n = st.sidebar.slider("Soil Nitrogen ppm", 20, 70, 45)
+soil_oc = st.sidebar.slider("Soil Organic Carbon %", 0.5, 3.0, 1.3)
+clay = st.sidebar.slider("Clay %", 10, 40, 25)
+
+pesticide = st.sidebar.slider("Pesticide kg/ha", 0, 10, 3)
+
+# 3. PREDICT
+input_data = pd.DataFrame([[
+    rainfall, temp, humidity, solar,
+    soil_ph, soil_n, soil_oc, clay,
+    pesticide
+]], columns=features)
+
+if st.button("Predict Yield"):
+    prediction = model.predict(input_data)[0]
+
+    st.subheader(f"Predicted Yield: {prediction:.2f} tons/ha")
+
+    # 4. ADVICE ENGINE
+    if prediction < 2.5:
+        st.error("⚠️ High Risk of Low Yield")
+        st.write("**Recommendation:**")
+        st.write("- Soil N is low. Apply 50-100kg Urea/ha before tasseling")
+        st.write("- Rainfall forecast is low. Consider supplemental irrigation")
+    elif prediction < 3.5:
+        st.warning("🟡 Average Yield Expected")
+        st.write("**Recommendation:** Maintain current fertilizer. Monitor pests.")
+    else:
+        st.success("✅ Good Yield Expected")
+        st.write("**Recommendation:** Plan storage and buyers early. Lock in prices.")
+
+    # 5. SHOW FEATURE IMPORTANCE
+    st.subheader("What Drove This Prediction?")
+    importances = pd.DataFrame({
+        'feature': features,
+        'importance': model.feature_importances_
+    }).sort_values('importance', ascending=False).head(5)
+    st.bar_chart(importances.set_index('feature'))
+
+st.markdown("---")
+st.caption("Built with synthetic NASA + SoilGrids-like data. For demo purposes.")
