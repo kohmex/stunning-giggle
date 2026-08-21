@@ -1,0 +1,10 @@
+nigeria-crop-yield-predictor/
+├── app.py                          # Streamlit demo
+├── train_model.py                  # Train + save model
+├── generate_data.py                # Synthesize soil + weather
+├── final_synthetic_crop_dataset.csv # Your dataset
+├── requirements.txt
+├── README.md
+└── images/
+    ├── feature_importance.png
+    └── shap_summary.png
