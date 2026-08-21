@@ -1,0 +1,66 @@
+import pandas as pd
+import numpy as np
+from sdv.single_table import GaussianCopulaSynthesizer
+from sdv.metadata import SingleTableMetadata
+
+# STEP 1: LOAD YOUR PESTICIDE DATA
+pest = pd.read_csv('/mnt/data/pesticides.csv')
+print("Pesticide data shape:", pest.shape)
+print(pest.head())
+
+# Assume your pesticides.csv has: ['LGA', 'crop', 'date', 'pesticide_kg_ha']
+# If column names are different, change them here
+
+# STEP 2: SYNTHESIZE WEATHER DATA
+# Base it on realistic Nigeria ranges
+weather_real = pd.DataFrame({
+    'rainfall_mm': [110, 90, 140, 85, 120, 130, 75, 135, 100, 115],
+    'temp_avg_c': [28, 31, 27, 30, 29, 28, 32, 27, 29, 28],
+    'humidity': [75, 65, 80, 70, 78, 76, 60, 82, 72, 74],
+    'solar_rad': [18, 20, 17, 21, 19, 18, 22, 17, 19, 18]
+})
+
+meta_w = SingleTableMetadata()
+meta_w.detect_from_dataframe(weather_real)
+syn_w = GaussianCopulaSynthesizer(meta_w)
+syn_w.fit(weather_real)
+weather_syn = syn_w.sample(num_rows=len(pest))
+
+# STEP 3: SYNTHESIZE SOIL DATA  
+soil_real = pd.DataFrame({
+    'soil_ph': [6.2, 5.8, 6.8, 6.0, 6.4, 6.5, 5.5, 6.7, 6.1, 6.3],
+    'soil_n': [45, 30, 60, 35, 50, 55, 25, 58, 40, 48],
+    'soil_oc': [1.2, 0.8, 2.1, 1.0, 1.5, 1.6, 0.7, 1.9, 1.1, 1.3], # Organic Carbon %
+    'clay_pct': [25, 18, 35, 20, 28, 30, 15, 33, 22, 26]
+})
+
+meta_s = SingleTableMetadata()
+meta_s.detect_from_dataframe(soil_real)
+syn_s = GaussianCopulaSynthesizer(meta_s)
+syn_s.fit(soil_real)
+soil_syn = syn_s.sample(num_rows=len(pest))
+
+# STEP 4: MERGE EVERYTHING
+final_df = pd.concat([
+    pest.reset_index(drop=True),
+    weather_syn.reset_index(drop=True),
+    soil_syn.reset_index(drop=True)
+], axis=1)
+
+# Add a synthetic target: yield_tons_per_ha 
+# Based on realistic formula: more rain + N + less temp stress = more yield
+final_df['yield_tons_per_ha'] = (
+    0.02 * final_df['rainfall_mm'] + 
+    0.03 * final_df['soil_n'] + 
+    0.5 * final_df['soil_ph'] - 
+    0.05 * final_df['temp_avg_c'] + 
+    0.01 * final_df['pesticide_kg_ha'] + 
+    np.random.normal(0, 0.3, len(final_df)) # noise
+).clip(1.0, 5.0)
+
+final_df.to_csv("final_synthetic_crop_dataset.csv", index=False)
+
+print("\n✅ Final dataset created!")
+print("Shape:", final_df.shape)
+print(final_df.head())
+print("\nColumns:", final_df.columns.tolist())
